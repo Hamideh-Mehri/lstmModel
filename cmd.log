@@ -1,0 +1,272 @@
+2023-12-28 12:31:18.472538: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudart.so.10.1
+2023-12-28 12:31:55.123259: I tensorflow/compiler/jit/xla_cpu_device.cc:41] Not creating XLA devices, tf_xla_enable_xla_devices not set
+2023-12-28 12:31:55.124582: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcuda.so.1
+2023-12-28 12:31:55.156689: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1720] Found device 0 with properties: 
+pciBusID: 0000:3b:00.0 name: Quadro RTX 8000 computeCapability: 7.5
+coreClock: 1.77GHz coreCount: 72 deviceMemorySize: 47.45GiB deviceMemoryBandwidth: 625.94GiB/s
+2023-12-28 12:31:55.156980: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1720] Found device 1 with properties: 
+pciBusID: 0000:af:00.0 name: Quadro RTX 8000 computeCapability: 7.5
+coreClock: 1.77GHz coreCount: 72 deviceMemorySize: 47.45GiB deviceMemoryBandwidth: 625.94GiB/s
+2023-12-28 12:31:55.157022: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudart.so.10.1
+2023-12-28 12:31:55.159328: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcublas.so.10
+2023-12-28 12:31:55.159409: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcublasLt.so.10
+2023-12-28 12:31:55.161527: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcufft.so.10
+2023-12-28 12:31:55.161750: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcurand.so.10
+2023-12-28 12:31:55.163164: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcusolver.so.10
+2023-12-28 12:31:55.163832: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcusparse.so.10
+2023-12-28 12:31:55.166836: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudnn.so.7
+2023-12-28 12:31:55.167471: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1862] Adding visible gpu devices: 0, 1
+2023-12-28 12:31:55.167839: I tensorflow/core/platform/cpu_feature_guard.cc:142] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  SSE4.1 SSE4.2 AVX AVX2 AVX512F FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2023-12-28 12:31:55.169005: I tensorflow/compiler/jit/xla_gpu_device.cc:99] Not creating XLA devices, tf_xla_enable_xla_devices not set
+2023-12-28 12:31:55.358253: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1720] Found device 0 with properties: 
+pciBusID: 0000:3b:00.0 name: Quadro RTX 8000 computeCapability: 7.5
+coreClock: 1.77GHz coreCount: 72 deviceMemorySize: 47.45GiB deviceMemoryBandwidth: 625.94GiB/s
+2023-12-28 12:31:55.358461: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1720] Found device 1 with properties: 
+pciBusID: 0000:af:00.0 name: Quadro RTX 8000 computeCapability: 7.5
+coreClock: 1.77GHz coreCount: 72 deviceMemorySize: 47.45GiB deviceMemoryBandwidth: 625.94GiB/s
+2023-12-28 12:31:55.358493: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudart.so.10.1
+2023-12-28 12:31:55.358517: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcublas.so.10
+2023-12-28 12:31:55.358525: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcublasLt.so.10
+2023-12-28 12:31:55.358533: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcufft.so.10
+2023-12-28 12:31:55.358541: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcurand.so.10
+2023-12-28 12:31:55.358550: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcusolver.so.10
+2023-12-28 12:31:55.358568: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcusparse.so.10
+2023-12-28 12:31:55.358576: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudnn.so.7
+2023-12-28 12:31:55.359063: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1862] Adding visible gpu devices: 0, 1
+2023-12-28 12:31:55.359095: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudart.so.10.1
+2023-12-28 12:31:56.101889: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1261] Device interconnect StreamExecutor with strength 1 edge matrix:
+2023-12-28 12:31:56.101945: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1267]      0 1 
+2023-12-28 12:31:56.101952: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1280] 0:   N Y 
+2023-12-28 12:31:56.101955: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1280] 1:   Y N 
+2023-12-28 12:31:56.102747: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1406] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 45387 MB memory) -> physical GPU (device: 0, name: Quadro RTX 8000, pci bus id: 0000:3b:00.0, compute capability: 7.5)
+2023-12-28 12:31:56.103468: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1406] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:1 with 45387 MB memory) -> physical GPU (device: 1, name: Quadro RTX 8000, pci bus id: 0000:af:00.0, compute capability: 7.5)
+Finished encoding 2000 of 14354 seqs
+Finished encoding 4000 of 14354 seqs
+Finished encoding 6000 of 14354 seqs
+Finished encoding 8000 of 14354 seqs
+Finished encoding 10000 of 14354 seqs
+Finished encoding 12000 of 14354 seqs
+Finished encoding 14000 of 14354 seqs
+Took 30.86 secs
+2023-12-28 12:32:26.503185: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcudnn.so.7
+2023-12-28 12:32:27.379741: I tensorflow/stream_executor/platform/default/dso_loader.cc:49] Successfully opened dynamic library libcublas.so.10
+Epoch 1 Batch0 Loss 15.5450
+Epoch 1 Batch50 Loss 7.2212
+Epoch 1 Batch100 Loss 6.8671
+Epoch 1 Batch150 Loss 6.7370
+Epoch 1 Loss 6.6954
+** on validation data loss is 6.4659
+Time taken for 1 epoch: 7.66 secs
+
+Epoch 2 Batch0 Loss 6.3671
+Epoch 2 Batch50 Loss 6.4550
+Epoch 2 Batch100 Loss 6.4297
+Epoch 2 Batch150 Loss 6.4232
+Epoch 2 Loss 6.4094
+** on validation data loss is 6.3321
+Time taken for 1 epoch: 7.44 secs
+
+Epoch 3 Batch0 Loss 6.3302
+Epoch 3 Batch50 Loss 6.3395
+Epoch 3 Batch100 Loss 6.3229
+Epoch 3 Batch150 Loss 6.3088
+Epoch 3 Loss 6.3050
+** on validation data loss is 6.2563
+Time taken for 1 epoch: 7.59 secs
+
+Epoch 4 Batch0 Loss 6.2539
+Epoch 4 Batch50 Loss 6.2396
+Epoch 4 Batch100 Loss 6.2281
+Epoch 4 Batch150 Loss 6.2311
+Epoch 4 Loss 6.2235
+** on validation data loss is 6.1737
+Time taken for 1 epoch: 7.61 secs
+
+Epoch 5 Batch0 Loss 6.1497
+Epoch 5 Batch50 Loss 6.1713
+Epoch 5 Batch100 Loss 6.1735
+Epoch 5 Batch150 Loss 6.1504
+Epoch 5 Loss 6.1405
+** on validation data loss is 6.0864
+Time taken for 1 epoch: 7.17 secs
+
+prediction shape (3, 1, 16)
+prediction shape (3, 1, 7)
+prediction shape (3, 1, 12)
+prediction shape (3, 1, 31)
+prediction shape (3, 1, 31)
+prediction shape (3, 1, 2)
+prediction shape (3, 1, 2)
+prediction shape (3, 2, 16)
+prediction shape (3, 2, 7)
+prediction shape (3, 2, 12)
+prediction shape (3, 2, 31)
+prediction shape (3, 2, 31)
+prediction shape (3, 2, 2)
+prediction shape (3, 2, 2)
+prediction shape (3, 3, 16)
+prediction shape (3, 3, 7)
+prediction shape (3, 3, 12)
+prediction shape (3, 3, 31)
+prediction shape (3, 3, 31)
+prediction shape (3, 3, 2)
+prediction shape (3, 3, 2)
+prediction shape (3, 4, 16)
+prediction shape (3, 4, 7)
+prediction shape (3, 4, 12)
+prediction shape (3, 4, 31)
+prediction shape (3, 4, 31)
+prediction shape (3, 4, 2)
+prediction shape (3, 4, 2)
+prediction shape (3, 5, 16)
+prediction shape (3, 5, 7)
+prediction shape (3, 5, 12)
+prediction shape (3, 5, 31)
+prediction shape (3, 5, 31)
+prediction shape (3, 5, 2)
+prediction shape (3, 5, 2)
+prediction shape (3, 6, 16)
+prediction shape (3, 6, 7)
+prediction shape (3, 6, 12)
+prediction shape (3, 6, 31)
+prediction shape (3, 6, 31)
+prediction shape (3, 6, 2)
+prediction shape (3, 6, 2)
+prediction shape (3, 7, 16)
+prediction shape (3, 7, 7)
+prediction shape (3, 7, 12)
+prediction shape (3, 7, 31)
+prediction shape (3, 7, 31)
+prediction shape (3, 7, 2)
+prediction shape (3, 7, 2)
+prediction shape (3, 8, 16)
+prediction shape (3, 8, 7)
+prediction shape (3, 8, 12)
+prediction shape (3, 8, 31)
+prediction shape (3, 8, 31)
+prediction shape (3, 8, 2)
+prediction shape (3, 8, 2)
+prediction shape (3, 9, 16)
+prediction shape (3, 9, 7)
+prediction shape (3, 9, 12)
+prediction shape (3, 9, 31)
+prediction shape (3, 9, 31)
+prediction shape (3, 9, 2)
+prediction shape (3, 9, 2)
+prediction shape (3, 10, 16)
+prediction shape (3, 10, 7)
+prediction shape (3, 10, 12)
+prediction shape (3, 10, 31)
+prediction shape (3, 10, 31)
+prediction shape (3, 10, 2)
+prediction shape (3, 10, 2)
+prediction shape (3, 11, 16)
+prediction shape (3, 11, 7)
+prediction shape (3, 11, 12)
+prediction shape (3, 11, 31)
+prediction shape (3, 11, 31)
+prediction shape (3, 11, 2)
+prediction shape (3, 11, 2)
+prediction shape (3, 12, 16)
+prediction shape (3, 12, 7)
+prediction shape (3, 12, 12)
+prediction shape (3, 12, 31)
+prediction shape (3, 12, 31)
+prediction shape (3, 12, 2)
+prediction shape (3, 12, 2)
+prediction shape (3, 13, 16)
+prediction shape (3, 13, 7)
+prediction shape (3, 13, 12)
+prediction shape (3, 13, 31)
+prediction shape (3, 13, 31)
+prediction shape (3, 13, 2)
+prediction shape (3, 13, 2)
+prediction shape (3, 14, 16)
+prediction shape (3, 14, 7)
+prediction shape (3, 14, 12)
+prediction shape (3, 14, 31)
+prediction shape (3, 14, 31)
+prediction shape (3, 14, 2)
+prediction shape (3, 14, 2)
+prediction shape (3, 15, 16)
+prediction shape (3, 15, 7)
+prediction shape (3, 15, 12)
+prediction shape (3, 15, 31)
+prediction shape (3, 15, 31)
+prediction shape (3, 15, 2)
+prediction shape (3, 15, 2)
+prediction shape (3, 16, 16)
+prediction shape (3, 16, 7)
+prediction shape (3, 16, 12)
+prediction shape (3, 16, 31)
+prediction shape (3, 16, 31)
+prediction shape (3, 16, 2)
+prediction shape (3, 16, 2)
+prediction shape (3, 17, 16)
+prediction shape (3, 17, 7)
+prediction shape (3, 17, 12)
+prediction shape (3, 17, 31)
+prediction shape (3, 17, 31)
+prediction shape (3, 17, 2)
+prediction shape (3, 17, 2)
+prediction shape (3, 18, 16)
+prediction shape (3, 18, 7)
+prediction shape (3, 18, 12)
+prediction shape (3, 18, 31)
+prediction shape (3, 18, 31)
+prediction shape (3, 18, 2)
+prediction shape (3, 18, 2)
+prediction shape (3, 19, 16)
+prediction shape (3, 19, 7)
+prediction shape (3, 19, 12)
+prediction shape (3, 19, 31)
+prediction shape (3, 19, 31)
+prediction shape (3, 19, 2)
+prediction shape (3, 19, 2)
+prediction shape (3, 20, 16)
+prediction shape (3, 20, 7)
+prediction shape (3, 20, 12)
+prediction shape (3, 20, 31)
+prediction shape (3, 20, 31)
+prediction shape (3, 20, 2)
+prediction shape (3, 20, 2)
+prediction shape (3, 21, 16)
+prediction shape (3, 21, 7)
+prediction shape (3, 21, 12)
+prediction shape (3, 21, 31)
+prediction shape (3, 21, 31)
+prediction shape (3, 21, 2)
+prediction shape (3, 21, 2)
+prediction shape (3, 22, 16)
+prediction shape (3, 22, 7)
+prediction shape (3, 22, 12)
+prediction shape (3, 22, 31)
+prediction shape (3, 22, 31)
+prediction shape (3, 22, 2)
+prediction shape (3, 22, 2)
+prediction shape (3, 23, 16)
+prediction shape (3, 23, 7)
+prediction shape (3, 23, 12)
+prediction shape (3, 23, 31)
+prediction shape (3, 23, 31)
+prediction shape (3, 23, 2)
+prediction shape (3, 23, 2)
+prediction shape (3, 24, 16)
+prediction shape (3, 24, 7)
+prediction shape (3, 24, 12)
+prediction shape (3, 24, 31)
+prediction shape (3, 24, 31)
+prediction shape (3, 24, 2)
+prediction shape (3, 24, 2)
+prediction shape (3, 25, 16)
+prediction shape (3, 25, 7)
+prediction shape (3, 25, 12)
+prediction shape (3, 25, 31)
+prediction shape (3, 25, 31)
+prediction shape (3, 25, 2)
+prediction shape (3, 25, 2)
+0
+1
+2
+finish
