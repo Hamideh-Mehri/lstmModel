@@ -4,13 +4,31 @@ import calendar
 import time
 import tensorflow as tf
 import pandas as pd
-from lib.field_info_v2 import FieldInfo_v2
+from lib.field_info import FieldInfo, FIELD_INFO_TCODE, FieldInfo_type2
 from lib.modules import create_masks, Encoder_Decoder_lstm_Inference
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
 import csv
+import json
+import random
+import os
 
+# random.seed(0)
+# np.random.seed(0)
+# tf.random.set_seed(0)
+# os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
-fieldInfo = FieldInfo_v2('banksformer')
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        config = json.load(file)
+    return config
 
+confighyper = load_config('config_hyper.json')
+STRATEGY = confighyper['strategy']
+loss_data_filename = confighyper['loss_data_filename']
+
+fieldInfo = FieldInfo(STRATEGY)
+#fieldInfo = FIELD_INFO_TCODE()
+#fieldInfo = FieldInfo_type2()
 
 loss_scce_logit = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, reduction='none')
 loss_mse = tf.keras.losses.MeanSquaredError(reduction='none')
@@ -22,14 +40,40 @@ LOSS_WEIGHTS = {
  'dtme': 0.025,
  'dow': 0.01,
  'tcode_num': 1.,
+ 'k_symbol_num':1.,
+ 'operation_num':1.0,
+ 'type_num':1.0,
  'log_amount_sc': 2.}
 
+# INP_ENCODING = fieldInfo.INP_ENCODINGS
+# NET_ENCODING = fieldInfo.NET_ENCODINGS
 FIELD_STARTS_TAR = fieldInfo.FIELD_STARTS_TAR
 FIELD_DIMS_TAR = fieldInfo.FIELD_DIMS_TAR
 LOSS_TYPES = fieldInfo.LOSS_TYPES
 FIELD_STARTS_IN = fieldInfo.FIELD_STARTS_IN
 FIELD_DIMS_IN = fieldInfo.FIELD_DIMS_IN
 FIELD_DIMS_NET = fieldInfo.FIELD_DIMS_NET
+
+def bulk_encode_time_value(val, max_val):
+    """ encoding date features in the clockwise dimension """
+    x = np.sin(2 * np.pi / max_val * val)
+    y = np.cos(2 * np.pi / max_val * val)
+    return np.stack([x, y], axis=1)
+
+def clock_to_probs(pt, pts):
+    EPS_CLOCKP = 0.01
+    pt_expanded = tf.expand_dims(pt, 2)                     # Shape: (n_seq, seq_len, 1, 2)
+    pts_expanded = tf.reshape(pts, [1, 1, pts.shape[0], 2]) # Shape: (1, 1, net_dim, 2)
+
+    ds = tf.constant(pts_expanded) - pt_expanded            # Shape: (n_seq, seq_len, net_dim, 2)
+    sq_ds = np.sum(tf.square(ds+EPS_CLOCKP), axis= -1)       # Shape: (n_seq, seq_len, net_dim)
+    raw_ps = 1/ sq_ds   
+    return raw_ps / np.sum(raw_ps)
+
+date_info = {'month':12, 'day':31, 'dtme':31, 'dow':7}
+CLOCKS = {}
+for k, val in date_info.items():
+    CLOCKS[k] = tf.constant(bulk_encode_time_value(np.arange(val), val), dtype=tf.float32)
 
 def log_normal_pdf(sample, mean, logvar, raxis=1):
     log2pi = tf.math.log(2. * np.pi)
@@ -79,7 +123,47 @@ def log_normal_pdf_gen(sample, mean, logvar, raxis=1):
     log2pi = tf.cast(tf.math.log(2. * np.pi), tf.float64)
     return  -.5 * ((sample - mean) ** 2. * tf.exp(-logvar) + logvar + log2pi)
 
-def raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE, max_days = 100, greedy_decode=False):
+def encode_rbf(array, rbf, net_name):
+    """
+    Transform a NumPy array using a fitted RepeatingBasisFunction and convert to a NumPy array of shape (n, num of rbf functions = 2).
+
+    Parameters:
+    array (np.array): Input NumPy array of shape (n,).
+    rbf (RepeatingBasisFunction): Fitted RepeatingBasisFunction object.
+    net_name: name of the the date column('dow', 'month', 'day', 'dtme')
+
+    Returns:
+    np.array: Transformed NumPy array of shape (n, num of rbf functions = 2).
+    """
+    # Convert the NumPy array to DataFrame
+    df = pd.DataFrame(array, columns=[net_name])
+
+    # Transform using the fitted RBF
+    transformed_array = rbf.transform(df)
+
+    return transformed_array
+
+def encode_onehot(array, net_dim):
+    """
+    Converts an array of numbers to a one-hot encoded numpy array.
+    
+    Args:
+    array (array-like): An array of numbers.
+    net_dim (int): The dimension for the one-hot encoding.
+
+    Returns:
+    numpy.ndarray: A numpy array of shape (n, net_dim) with one-hot encoded values.
+    """
+    # Convert the input array to a TensorFlow tensor
+    tensor = tf.constant(array)
+
+    # Apply one-hot encoding
+    one_hot_tensor = tf.one_hot(tensor, depth=net_dim)
+
+    # Convert the one-hot encoded tensor to a numpy array and return
+    return one_hot_tensor.numpy()
+
+def raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE,RBF_dic, max_days = 100, greedy_decode=False):
 
     """ 
     raw_preds: raw predictions (info about predicted day, month, dow, and days passed)
@@ -89,7 +173,13 @@ def raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE, max_days = 100, 
     
         Computes a number of days passed for each based on inputs (either greedily or with sampling)
          returns the new_dates (old_dates + days passed) and their indicies   """
+    
+
     # raw_preds[k][:, -1]-- get the last element in each sequence  
+    for k in ["month", "day", "dow", "dtme"]:
+        if raw_preds[k].shape[-1] == 2:
+           raw_preds[k] = clock_to_probs(raw_preds[k], CLOCKS[k]) 
+
     all_ps = [tf.nn.softmax(raw_preds[k][:,-1]).numpy() for k in ["month", "day", "dow", "dtme"]]  #length of list: 4
     timesteps = np.zeros(len(start_inds)).astype(int)
     for i, (month_ps, day_ps, dow_ps, dtme_ps, td_pred, si) in enumerate(zip(*all_ps, raw_preds["td_sc"][:,-1].numpy(), start_inds)):
@@ -97,20 +187,36 @@ def raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE, max_days = 100, 
         ps = month_ps[AD[si:si+max_days,0]]*day_ps[AD[si:si+max_days,1]]*dow_ps[AD[si:si+max_days,2]] *dtme_ps[AD[si:si+max_days,-1]] * \
                     np.exp(log_normal_pdf_gen(AD[si:si+max_days,3]-si, mean = td_pred[0]*TD_SCALE, logvar=td_pred[1]*TD_SCALE))  #shape(max_days,)
 
-            
+        #print('AD[si:si+max_days].shape: ', AD[si:si+max_days].shape)
         if greedy_decode:
             timesteps[i] = np.argmax(ps)
         else:
             timesteps[i] = np.random.choice(max_days, p=ps/sum(ps))
+            
     inds = start_inds + timesteps
         
         
     return_ = {}
     return_["td_sc"] = tf.expand_dims(timesteps.astype(np.float32)/ TD_SCALE, axis=1)
-    return_["month"] = bulk_encode_time_value(AD[inds, 0], 12)
-    return_["day"] = bulk_encode_time_value(AD[inds, 1], 31)
-    return_["dow"] = bulk_encode_time_value(AD[inds, 2], 7)
-    return_["dtme"] = bulk_encode_time_value(AD[inds, -1], 31)
+
+    if STRATEGY == 'banksformer':
+        return_["month"] = bulk_encode_time_value(AD[inds, 0], 12)
+        return_["day"] = bulk_encode_time_value(AD[inds, 1], 31)
+        return_["dow"] = bulk_encode_time_value(AD[inds, 2], 7)
+        return_["dtme"] = bulk_encode_time_value(AD[inds, -1], 31)
+
+    elif STRATEGY == 'daterbf':
+        return_["month"] = encode_rbf(AD[inds, 0], RBF_dic['month'], 'month')
+        return_["day"] = encode_rbf(AD[inds, 1], RBF_dic['day'], 'day')
+        return_["dow"] = encode_rbf(AD[inds, 2], RBF_dic['dow'], 'dow')
+        return_["dtme"] = encode_rbf(AD[inds, 0], RBF_dic['dtme'], 'dtme')
+
+    elif STRATEGY == 'dateonehot':
+        return_['month'] = encode_onehot(AD[inds, 0], 12)
+        return_["day"] =  encode_onehot(AD[inds, 1], 31)
+        return_["dow"] =  encode_onehot(AD[inds, 2], 7)
+        return_["dtme"] =  encode_onehot(AD[inds, -1], 31)
+        #print(return_)
 
     raw_date = {}
     raw_date['month'] = AD[inds, 0]
@@ -120,14 +226,12 @@ def raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE, max_days = 100, 
     return return_, inds, raw_date
 
 
-def bulk_encode_time_value(val, max_val):
-        """ encoding date features in the clockwise dimension """
-        x = np.sin(2 * np.pi / max_val * val)
-        y = np.cos(2 * np.pi / max_val * val)
-        return np.stack([x, y], axis=1)
+    #return return_, return_oh, inds, raw_date
 
 
-def reencode_net_prediction(net_name, predictions):
+
+
+def reencode_net_prediction(net_name, predictions, RBF_dic):
     """net_name is in ['tcode_num', 'dow', 'month', 'day', 'dtme', 'td_sc', 'log_amount_sc']
        predictions for ['tcode_num', 'dow', 'month', 'day', 'dtme'] are probabilities of dimensions [16, 7, 12, 31, 31]
 
@@ -137,13 +241,11 @@ def reencode_net_prediction(net_name, predictions):
                   extract the predicted mean of 'td' and 'amount' as predicted values 
                 
     """
-    date_info = {'month':12, 'day':31, 'dtme':31, 'dow':7}
-    CLOCKS = {}
-    for k, val in date_info.items():
-        CLOCKS[k] = tf.constant(bulk_encode_time_value(np.arange(val), val), dtype=tf.float32)
-        
+    
+    print("reencode_net_prediction:", net_name, predictions.shape)
     batch_size = predictions.shape[0]
-    print('prediction shape', predictions.shape)
+    date_info = {'month':12, 'day':31, 'dtme':31, 'dow':7}
+
     if "_num" in net_name:
         dim = FIELD_DIMS_NET[net_name]
         choices = np.arange(dim)
@@ -151,23 +253,59 @@ def reencode_net_prediction(net_name, predictions):
         choosen =  np.reshape([np.random.choice(choices, p=p) for p in ps], newshape=(batch_size, -1))
 
         return tf.one_hot(choosen, depth=dim)      #(n_seq_to_generate, seq_len, dim=16)
-    #elif net_name in date_info.keys() and predictions.shape[-1] != 2 
-    elif net_name in date_info.keys():
+    
+    elif net_name in date_info.keys() and RBF_dic is None:                  #date representation is Clock Encoding or one-hot encoding
         dim = FIELD_DIMS_NET[net_name]
         choices = np.arange(dim)
         ps = tf.nn.softmax(predictions, axis=2).numpy().reshape(-1, dim)
         choosen =  np.array([np.random.choice(choices, p=p) for p in ps])
-        if net_name != 'dtme':
-           choosen = choosen + 1
-        x = bulk_encode_time_value(choosen, max_val=dim)
-        
+        #print('choosen',choosen, " ", net_name)
+        if STRATEGY == 'banksformer':
+           #print('banksbanks') 
+           x = bulk_encode_time_value(choosen, max_val=dim)
+           #print('x', x.shape, type(x))
+           return np.reshape(x, newshape=(batch_size, -1, 2))
+        else:
+            x = encode_onehot(choosen, dim)
+            #print(x.shape)
+            return np.reshape(x, newshape=(batch_size, -1, dim))
+           
+    
+    elif net_name in date_info.keys() and RBF_dic is not None:               #date representation is RBF
+        #print(net_name)
+        dim = FIELD_DIMS_NET[net_name]
+        choices = np.arange(dim)
+        ps = tf.nn.softmax(predictions, axis=2).numpy().reshape(-1, dim)
+        choosen =  np.array([np.random.choice(choices, p=p) for p in ps])
+        #print('choosen',choosen, " ", net_name)
+        x = encode_rbf(choosen, RBF_dic[net_name], net_name)
+        #print('x', x.shape, type(x))
         return np.reshape(x, newshape=(batch_size, -1, 2))
 
+
+    # elif net_name in ['td_sc', "log_amount_sc"]:
+    #     return predictions[:, :, 0:1]
     elif net_name in ['td_sc', "log_amount_sc"]:
-        return predictions[:, :, 0:1]
+        mean, log_var = predictions[:, :, 0:1],  predictions[:, :, 1:2]
+        # sd = np.sqrt(np.exp(log_var))
+        log_sd = log_var/2.
+        return mean +  log_sd * np.random.normal(size=(batch_size, 1, 1)) 
+
+    # elif net_name in date_info.keys() and 'cl' in INP_ENCODING[net_name] and 'cl' in NET_ENCODING[net_name]:
+    #     dim = date_info[net_name]
+    #     assert predictions.shape[-1] == FIELD_DIMS_NET[net_name]
+    #     choices = np.arange(dim)
+    #     preds = clock_to_probs(predictions, CLOCKS[net_name])
+    #     ps = tf.nn.softmax(preds, axis=2).numpy().reshape(-1, dim)    #predictions: (n_seq_to_generate, seq_len, dim=dim)
+    #     choosen =  np.reshape([np.random.choice(choices, p=p) for p in ps], newshape=(batch_size, -1))
+    #     x = bulk_encode_time_value(choosen, max_val=dim)
+        
+        # return np.reshape(x, newshape=(batch_size, -1, 2))
+    # elif net_name in ['td_sc', "log_amount_sc"]:
+    #     return predictions[:, :, 0:1]
 
 
-def call_to_generate(lstm, inp, start_inds, AD, TD_SCALE):
+def call_to_generate(lstm, inp, start_inds, AD, TD_SCALE,RBF_dic):
     """
     This function is called 'lenght_of_sequences' times
     lstm : trained stacked lstm used for generating synthetic data
@@ -194,7 +332,7 @@ def call_to_generate(lstm, inp, start_inds, AD, TD_SCALE):
 
     ### Predict each field  ###
     
-    #raw_preds is the outputs of the last dense layer of transformer. 
+    #raw_preds is the outputs of the last dense layer of deep model. 
     raw_preds = {}
     #preds is the reencoded raw_preds, 'tcode' converts to one-hot encoded, 'date-features' are converted to clock-wise
     #and for 'amount' and 'td' the predicted mean is extracted. it is used for conditional generating. 
@@ -207,7 +345,7 @@ def call_to_generate(lstm, inp, start_inds, AD, TD_SCALE):
         for net_name in lstm.ORDER:  
 
             raw_preds[net_name] = lstm.dense_layers[net_name](final_output)
-            en_pred = reencode_net_prediction(net_name, raw_preds[net_name]) 
+            en_pred = reencode_net_prediction(net_name, raw_preds[net_name], RBF_dic) 
             preds[net_name] = en_pred
                 
             encoded_preds_d[net_name] = en_pred[:,-1,:] 
@@ -227,20 +365,71 @@ def call_to_generate(lstm, inp, start_inds, AD, TD_SCALE):
                 raw_preds[net_name] = tf.keras.activations.relu(final_output[:, :, st:ed])
             st = ed
 
-            en_pred = reencode_net_prediction(net_name, raw_preds[net_name]) 
+            en_pred = reencode_net_prediction(net_name, raw_preds[net_name], RBF_dic) 
             preds[net_name] = en_pred
 
             encoded_preds_d[net_name] = en_pred[:,-1,:] 
 
-    date_info, inds, raw_date_info = raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE)
+    date_info, inds, raw_date_info = raw_dates_to_reencoded(raw_preds, start_inds, AD, TD_SCALE,RBF_dic)
+    
     encoded_preds_d.update(date_info)
+    for k in lstm.ORDER:
+        assert encoded_preds_d[k].shape[-1] == FIELD_DIMS_IN[k]
     l = [encoded_preds_d[k] for k in lstm.ORDER]
     encoded_preds =  tf.expand_dims(tf.concat(l, axis=1), axis=1)   #tensor of shape (n_seqs_to_generate, 1, 26(input features))
 
+    assert encoded_preds.shape[-1] == sum(FIELD_DIMS_IN.values())
+
     return preds, raw_preds, inds, encoded_preds, raw_date_info
+
+
+def call_to_generate_type2(lstm, inp):
+
+    final_output = lstm(inp, return_decoder_lstm2_output=True)
+    raw_preds = {}
+    #preds is the reencoded raw_preds, 'tcode' converts to one-hot encoded, 'date-features' are converted to clock-wise
+    #and for 'amount' and 'td' the predicted mean is extracted. it is used for conditional generating. 
+    preds = {}
+    #encoded_preds_d is similar to preds for 'tcode', 'td', and 'amount', but for date features , the predicted date is computed 
+    #based on a formula 
+    encoded_preds_d = {}
+    #encoded_preds = []
     
-def save_csv(results):
-    with open('results.csv', 'w', newline='') as file:
+    if lstm.conditional:
+        for net_name in lstm.ORDER:
+            raw_preds[net_name] = lstm.dense_layers[net_name](final_output)
+            en_pred = reencode_net_prediction(net_name, raw_preds[net_name], None) 
+            preds[net_name] = en_pred
+                    
+            encoded_preds_d[net_name] = en_pred[:,-1,:] 
+            #encoded_preds.append(pred[:,-1,:])
+            final_output = tf.concat([final_output, en_pred], axis=2)
+    else:
+        final_output = lstm.dense_layer(final_output)
+        st = 0
+        for net_name, dim in lstm.FIELD_DIMS_NET.items():
+            acti = lstm.ACTIVATIONS.get(net_name, None)
+            ed = st + dim
+            if acti is None:
+                raw_preds[net_name] = final_output[:,:,st:ed]
+            elif acti == 'relu':
+                raw_preds[net_name] = tf.keras.activations.relu(final_output[:, :, st:ed])
+            st = ed
+
+            en_pred = reencode_net_prediction(net_name, raw_preds[net_name], None) 
+            preds[net_name] = en_pred
+
+            encoded_preds_d[net_name] = en_pred[:,-1,:] 
+
+    l = [encoded_preds_d[k] for k in lstm.ORDER]
+    encoded_preds =  tf.expand_dims(tf.concat(l, axis=1), axis=1)
+    return preds, encoded_preds
+
+    
+
+
+def save_csv(results, loss_data_filename):
+    with open(loss_data_filename, 'w', newline='') as file:
        writer = csv.writer(file)
 
        # Write the header
@@ -259,7 +448,13 @@ class Train(object):
         self.results = dict([(x, []) for x in ["loss", "val_loss"]])
 
     def train(self, train_batches, val_batches, epochs, early_stop):
-        optimizer = tf.keras.optimizers.Adam() 
+        #optimizer = tf.keras.optimizers.Adam() 
+        l2_norm_clip = 1.0
+        noise_multiplier = 2.2
+        
+        optimizer = DPKerasAdamOptimizer(
+                l2_norm_clip=l2_norm_clip,
+                noise_multiplier=noise_multiplier)
     
         for epoch in range(epochs):
             start = time.time()
@@ -290,27 +485,31 @@ class Train(object):
                 
                 print(f"Stopping early, last {early_stop} val losses are: {self.results['val_loss'][-early_stop:]} \
                     \nBest was {min(self.results['val_loss'] ):.3f}\n\n")
-                save_csv(self.results)
+                save_csv(self.results, loss_data_filename)
                 self.lstm.save_weights('lstm_model_weights.h5')
                 break
+            save_csv(self.results, loss_data_filename)
+        self.lstm.save_weights('lstm_model_weights.h5')
 
-            self.lstm.save_weights('lstm_model_weights.h5')
-
-    def generate_synthetic_data(self, max_length, n_seqs_to_generate, df, attributes, n_feat_inp):
+    def generate_synthetic_data(self, max_length, n_seqs_to_generate, df, attributes, n_feat_inp, RBF_dic = None):
         """ 
         max_length : length of the generated sequences
         n_seqs_to_generate: number of unique customers in the generated data
         df: original preprocessed dataframe
         attributes: an array of dimension(number_of_seqs_in_training_data,) of scaled attributes(age)
         """
-        MAX_YEARS_SPAN = 15
+        MAX_YEARS_SPAN = 20
         get_dtme = lambda d: calendar.monthrange(d.year, d.month)[1] - d.day
 
         START_DATE = df["datetime"].min()
         ATTR_SCALE = df["age"].std()
         LOG_AMOUNT_SCALE = df["log_amount"].std()
         TD_SCALE = df["td"].std()
+
         NUM_TO_TCODE = dict([(i, tc) for i, tc in enumerate(df['tcode'].unique())])
+        # NUM_TO_K_SYMBOL = dict([(i, tc) for i, tc in enumerate(df['k_symbol'].unique())])
+        # NUM_TO_OPERATION = dict([(i, tc) for i, tc in enumerate(df['operation'].unique())])
+        # NUM_TO_TYPE = dict([(i, tc) for i, tc in enumerate(df['type'].unique())])
 
         END_DATE = START_DATE.replace(year = START_DATE.year+ MAX_YEARS_SPAN)
 
@@ -335,9 +534,10 @@ class Train(object):
         inference_model.load_weights('lstm_model_weights.h5')
         
         for i in range(max_length):     
-            predictions, raw_ps, date_inds, enc_preds, raw_date  = call_to_generate(inference_model, inp, start_inds, AD, TD_SCALE)
+            predictions, raw_ps, date_inds, enc_preds, raw_date  = call_to_generate(inference_model, inp, start_inds, AD, TD_SCALE, RBF_dic)
             #print(date_inds)
             enc_preds = tf.reshape(tf.constant(enc_preds), shape=(-1,1, n_feat_inp))      #(n_seqs_to_generate, 1, n_feat_inp=26)
+            assert inp.shape[-1] == enc_preds.shape[-1]
             inp = tf.concat([inp, enc_preds], axis=1)   
             raw_date_info_list.append(raw_date)  
             start_inds = date_inds
@@ -352,18 +552,40 @@ class Train(object):
         amts = 10 ** amts
         amts = np.round(amts - 1.0, 2)
         days_passed = np.round(seqs[:, :, FIELD_STARTS_IN["td_sc"]] * TD_SCALE ).astype(int)
+
         t_code = np.argmax(seqs[:, :, FIELD_STARTS_IN["tcode_num"]: FIELD_STARTS_IN["tcode_num"] + FIELD_DIMS_IN["tcode_num"]], axis=-1)
+        # k_symbol = np.argmax(seqs[:, :, FIELD_STARTS_IN["k_symbol_num"]: FIELD_STARTS_IN["k_symbol_num"] + FIELD_DIMS_IN["k_symbol_num"]], axis=-1)
+        # operation = np.argmax(seqs[:, :, FIELD_STARTS_IN["operation_num"]: FIELD_STARTS_IN["operation_num"] + FIELD_DIMS_IN["operation_num"]], axis=-1)
+        # type_ = np.argmax(seqs[:, :, FIELD_STARTS_IN["type_num"]: FIELD_STARTS_IN["type_num"] + FIELD_DIMS_IN["type_num"]], axis=-1)
+
 
         # Flatten arrays and translate transaction codes
         flattened_amts = amts.flatten()
+
         flattened_tcodes = t_code.flatten()
+        # flattened_ksymbol = k_symbol.flatten()
+        # flattened_operation = operation.flatten()
+        # flattened_type = type_.flatten()
+
         translated_tcodes = [NUM_TO_TCODE[code] for code in flattened_tcodes]
+        # translated_ksymbol = [NUM_TO_K_SYMBOL[code] for code in flattened_ksymbol]
+        # translated_operation = [NUM_TO_OPERATION[code] for code in flattened_operation]
+        # translated_type = [NUM_TO_TYPE[code] for code in flattened_type]
+        
 
         # Create DataFrame for amounts and transaction codes
         df_synth = pd.DataFrame({
             'amount': flattened_amts,
             'transaction_code': translated_tcodes
         })
+
+        # Create DataFrame for amounts and transaction codes
+        # df_synth = pd.DataFrame({
+        #     'amount': flattened_amts,
+        #     'k_symbol': translated_ksymbol,
+        #     'operation': translated_operation,
+        #     'type' : translated_type
+        # })
 
         # Handling account IDs
         num_customers = amts.shape[0]
@@ -408,4 +630,132 @@ class Train(object):
         df_synth['days_passed'] = flattened_days_passed
 
         return df_synth
+
+    def generate_synthetic_tcode(self, max_length, n_seqs_to_generate, df, attributes, n_feat_inp):
+        #generate 'tcode' sequences
+        NUM_TO_TCODE = dict([(i, tc) for i, tc in enumerate(df['tcode'].unique())])
+        ATTR_SCALE = df["age"].std()
+        seq_ages = np.random.choice(attributes, size=n_seqs_to_generate) # sample ages from real data
+        inp = np.repeat(np.array(seq_ages)[:, None, None], repeats=n_feat_inp, axis=2) / ATTR_SCALE   #(n_seqs_to_generate, 1, n_feat_inp) 
+        
+        conditional = self.lstm.conditional
+        inference_model = Encoder_Decoder_lstm_Inference(self.lstm.config, self.lstm.inp_feat, conditional)
+        dummy_input = tf.random.normal([n_seqs_to_generate, max_length, n_feat_inp])
+        # Build the model by running dummy data through it
+        inference_model(dummy_input)
+        inference_model.load_weights('lstm_model_weights.h5')
+
+        for i in range(max_length):     
+            predictions, enc_preds = call_to_generate_type2(inference_model, inp)
+            #print(date_inds)
+            enc_preds = tf.reshape(tf.constant(enc_preds), shape=(-1,1, n_feat_inp))      #(n_seqs_to_generate, 1, n_feat_inp)
+            inp = tf.concat([inp, enc_preds], axis=1)   
+            print(inp.shape)
+        seqs = inp
+        ages = seqs[:, 0, :] * ATTR_SCALE
+        seqs = seqs[:, 1:, :]
+        assert np.sum(np.diff(ages)) == 0, f"Bad formating, expected all entries same in each row, got {ages}"
+        tcodeseq = seqs[:, :, FIELD_STARTS_IN["tcode_num"]: FIELD_STARTS_IN["tcode_num"] + FIELD_DIMS_IN["tcode_num"]]
+        t_code = np.argmax(seqs[:, :, FIELD_STARTS_IN["tcode_num"]: FIELD_STARTS_IN["tcode_num"] + FIELD_DIMS_IN["tcode_num"]], axis=-1)
+        flattened_tcodes = t_code.flatten()
+        translated_tcodes = [NUM_TO_TCODE[code] for code in flattened_tcodes]
+        df_synth = pd.DataFrame({ 'tcode': translated_tcodes })
+        # Handling account IDs
+        num_customers = tcodeseq.shape[0]
+        num_transactions = tcodeseq.shape[1]
+        account_ids = np.repeat(range(num_customers), num_transactions)
+        df_synth['account_id'] = account_ids
+
+        return df_synth
+
+
+
+    def generate_synthetic_data_type2(self, max_length, n_seqs_to_generate, df, attributes, n_feat_inp):
+        "for generating data when the inputs are [tcode, amount, td]"
+        LOG_AMOUNT_SCALE = df["log_amount"].std()
+        TD_SCALE = df["td"].std()
+        NUM_TO_TCODE = dict([(i, tc) for i, tc in enumerate(df['tcode'].unique())])
+        ATTR_SCALE = df["age"].std()
+        seq_ages = np.random.choice(attributes, size=n_seqs_to_generate) # sample ages from real data
+        inp = np.repeat(np.array(seq_ages)[:, None, None], repeats=n_feat_inp, axis=2) / ATTR_SCALE   #(n_seqs_to_generate, 1, n_feat_inp) 
+       
+        start_date_opts = df.groupby("account_id")["datetime"].min().dt.date.to_list()   #len = 4500
+        sampled_start_dates = np.random.choice(start_date_opts, size=n_seqs_to_generate) # sample start dates from real data
+
+        conditional = self.lstm.conditional
+        inference_model = Encoder_Decoder_lstm_Inference(self.lstm.config, self.lstm.inp_feat, conditional)
+        dummy_input = tf.random.normal([n_seqs_to_generate, max_length, n_feat_inp])
+        # Build the model by running dummy data through it
+        inference_model(dummy_input)
+        inference_model.load_weights('lstm_model_weights.h5')
+
+        for i in range(max_length):     
+            raw_ps, enc_preds = call_to_generate_type2(inference_model, inp)
+            #print(date_inds)
+            enc_preds = tf.reshape(tf.constant(enc_preds), shape=(-1,1, n_feat_inp))      #(n_seqs_to_generate, 1, n_feat_inp)
+            inp = tf.concat([inp, enc_preds], axis=1)   
+            print(inp.shape)
+
+            FIELD_STARTS_IN = fieldInfo.FIELD_STARTS_IN
+            FIELD_DIMS_IN = fieldInfo.FIELD_DIMS_IN
+
+        seqs = inp
+        seqs = inp
+        ages = seqs[:, 0, :] * ATTR_SCALE
+        seqs = seqs[:, 1:, :]
+        assert np.sum(np.diff(ages)) == 0, f"Bad formating, expected all entries same in each row, got {ages}"
+
+        amts = seqs[:, :, FIELD_STARTS_IN["log_amount_sc"]].numpy() * LOG_AMOUNT_SCALE
+        amts = 10 ** amts
+        amts = np.round(amts - 1.0, 2)
+        days_passed = np.round(seqs[:, :, FIELD_STARTS_IN["td_sc"]] * TD_SCALE ).astype(int)
+
+        t_code = np.argmax(seqs[:, :, FIELD_STARTS_IN["tcode_num"]: FIELD_STARTS_IN["tcode_num"] + FIELD_DIMS_IN["tcode_num"]], axis=-1)
+        flattened_amts = amts.flatten()
+
+        flattened_tcodes = t_code.flatten()
+
+        flattened_td = days_passed.flatten()
+
+
+        translated_tcodes = [NUM_TO_TCODE[code] for code in flattened_tcodes]
+
+        df_synth = pd.DataFrame({
+            'amount': flattened_amts,
+            'tcode': translated_tcodes,
+            'td': flattened_td
+
+        })
+        # Handling account IDs
+        num_customers = amts.shape[0]
+        num_transactions = amts.shape[1]
+        account_ids = np.repeat(range(num_customers), num_transactions)
+        df_synth['account_id'] = account_ids
+
+        # Identify the first transaction for each account
+        first_transactions = df_synth.groupby('account_id').head(1).index
+        # Set 'td' to 0 only for the first transactions
+        df_synth.loc[first_transactions, 'td'] = 0
+
+        df_synth['cumulative_td'] = df_synth.groupby('account_id')['td'].cumsum()
+
+        for i, account_id in enumerate(df_synth['account_id'].unique()):
+            start_date_str = sampled_start_dates[i].strftime('%Y-%m-%d')
+            start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d')
+
+            # Filter the rows for the current account_id
+            account_rows = df_synth[df_synth['account_id'] == account_id]
+
+            # Calculate the date for each transaction
+            for index, row in account_rows.iterrows():
+                if index == 0:
+                    df_synth.at[index, 'td'] = 0
+                    df_synth.at[index, 'datetime'] = start_date
+                else:
+                    transaction_date = start_date + datetime.timedelta(days=row['cumulative_td'])
+                    df_synth.at[index, 'datetime'] = transaction_date
+        return df_synth
+
+
+
 
